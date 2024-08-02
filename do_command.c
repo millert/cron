@@ -64,7 +64,10 @@ child_process(const entry *e, const user *u) {
 
 	Debug(DPROC, ("[%ld] child_process('%s')\n", (long)getpid(), e->cmd))
 
-#ifdef CAPITALIZE_FOR_PS
+#if defined(HAVE_SETPROCTITLE)
+	/* mark ourselves as different to PS command watchers */
+	setproctitle("running job");
+#elif defined(CAPITALIZE_FOR_PS)
 	/* mark ourselves as different to PS command watchers by upshifting
 	 * our program name.  This has no effect on some kernels.
 	 */

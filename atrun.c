@@ -385,7 +385,10 @@ run_job(atjob *job, char *atfile)
 		_exit(ERROR_EXIT);
 	}
 
-#ifdef CAPITALIZE_FOR_PS
+#if defined(HAVE_SETPROCTITLE)
+	/* mark ourselves as different to PS command watchers */
+	setproctitle("atrun %s", atfile);
+#elif defined(CAPITALIZE_FOR_PS)
 	/* mark ourselves as different to PS command watchers by upshifting
 	 * our program name.  This has no effect on some kernels.
 	 * XXX - really want to set proc title to at job name instead

@@ -82,6 +82,9 @@
 			 */
 #define SYSLOG	 			/*-*/
 
+			/* if your OS has a setproctitle() function. */
+/*#define HAVE_SETPROCTITLE		/*-*/
+
 			/* if you want cron to capitalize its name in ps
 			 * when running a job.  Does not work on SYSV.
 			 */
