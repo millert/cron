@@ -421,8 +421,10 @@ cron_sleep(int target) {
 			if (fd >= 0 && fcntl(fd, F_SETFL, O_NONBLOCK) == 0) {
 				(void) read(fd, &poke, 1);
 				close(fd);
-				if (poke & RELOAD_CRON)
+				if (poke & RELOAD_CRON) {
+					database.mtim = ts_zero;
 					load_database(&database);
+				}
 #ifdef ATRUN
 				if (poke & RELOAD_AT) {
 					/*
@@ -431,6 +433,7 @@ cron_sleep(int target) {
 					 * jobs immediately.
 					 */
 					gettimeofday(&t2, NULL);
+					at_database.mtim = ts_zero;
 					if (scan_atjobs(&at_database, &t2))
 						atrun(&at_database,
 						    batch_maxload, t2.tv_sec);
