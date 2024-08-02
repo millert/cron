@@ -98,6 +98,16 @@
 			/* if your OS supports BSD authentication */
 /*#define BSD_AUTH			/*-*/
 
+			/* if you want built-in atrun support */
+#define ATRUN				/*-*/
+
+			/* if your OS has a getloadavg() function */
+/*#define HAVE_GETLOADAVG              /*-*/
+
+			/* Maximum load at which batch jobs will still run. */
+			/* Only valid if HAVE_GETLOADAVG is defined above. */
+#define BATCH_MAXLOAD 1.5		/*-*/
+
 			/* Define this to run crontab setgid instead of   
 			 * setuid root.  Group access will be used to read
 			 * the tabs/atjobs dirs and the allow/deny files.

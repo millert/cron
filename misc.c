@@ -268,6 +268,33 @@ set_cron_cwd(void) {
 		if (sb.st_mode != 01730)
 			chmod(SPOOL_DIR, 01730);
 	}
+
+#ifdef ATRUN
+	/* finally, look at AT_DIR ("atjobs" or some such)
+	 */
+	if (stat(AT_DIR, &sb) < OK && errno == ENOENT) {
+		perror(AT_DIR);
+		if (OK == mkdir(AT_DIR, 0700)) {
+			fprintf(stderr, "%s: created\n", AT_DIR);
+			stat(AT_DIR, &sb);
+		} else {
+			fprintf(stderr, "%s: ", AT_DIR);
+			perror("mkdir");
+			exit(ERROR_EXIT);
+		}
+	}
+	if (!S_ISDIR(sb.st_mode)) {
+		fprintf(stderr, "'%s' is not a directory, bailing out.\n",
+			AT_DIR);
+		exit(ERROR_EXIT);
+	}
+	if (grp != NULL) {
+		if (sb.st_gid != grp->gr_gid)
+			chown(AT_DIR, -1, grp->gr_gid);
+		if (sb.st_mode != 01770)
+			chmod(AT_DIR, 01770);
+	}
+#endif
 }
 
 /* acquire_daemonlock() - write our PID into /etc/cron.pid, unless
@@ -597,7 +624,7 @@ first_word(char *s, char *t) {
 /* warning:
  *	heavily ascii-dependent.
  */
-static void
+void
 mkprint(char *dst, unsigned char *src, int len) {
 	/*
 	 * XXX
@@ -739,3 +766,96 @@ long get_gmtoff(time_t *clock, struct tm *local)
 	return (offset);
 }
 #endif /* HAVE_TM_GMTOFF */
+
+/* int open_socket(void)
+ *	returns a UNIX domain socket that crontab uses to poke cron.
+ */
+int
+open_socket(void)
+{
+	int		   sock;
+	mode_t		   omask;
+	struct sockaddr_un s_un;
+
+	sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (sock == -1) {
+		fprintf(stderr, "%s: can't create socket: %s\n",
+		    ProgramName, strerror(errno));
+		log_it("CRON", getpid(), "DEATH", "can't create socket");
+		exit(ERROR_EXIT);
+	}
+	if (fcntl(sock, F_SETFD, FD_CLOEXEC) == -1) {
+		fprintf(stderr, "%s: can't make socket close on exec: %s\n",
+		    ProgramName, strerror(errno));
+		log_it("CRON", getpid(), "DEATH",
+		    "can't make socket close on exec");
+		exit(ERROR_EXIT);
+	}
+	if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
+		fprintf(stderr, "%s: can't make socket non-blocking: %s\n",
+		    ProgramName, strerror(errno));
+		log_it("CRON", getpid(), "DEATH",
+		    "can't make socket non-blocking");
+		exit(ERROR_EXIT);
+	}
+	bzero(&s_un, sizeof(s_un));
+	if (!glue_strings(s_un.sun_path, sizeof s_un.sun_path, SPOOL_DIR,
+	    CRONSOCK, '/')) {
+		fprintf(stderr, "%s/%s: path too long\n", SPOOL_DIR, CRONSOCK);
+		log_it("CRON", getpid(), "DEATH", "path too long");
+		exit(ERROR_EXIT);
+	}
+	unlink(s_un.sun_path);
+	s_un.sun_family = AF_UNIX;
+#ifdef SUN_LEN
+	s_un.sun_len = SUN_LEN(&s_un);
+#endif
+
+	omask = umask(007);
+	if (bind(sock, (struct sockaddr *)&s_un, sizeof(s_un))) {
+		fprintf(stderr, "%s: can't bind socket: %s\n",
+		    ProgramName, strerror(errno));
+		log_it("CRON", getpid(), "DEATH", "can't bind socket");
+		exit(ERROR_EXIT);
+	}
+	if (listen(sock, SOMAXCONN)) {
+		fprintf(stderr, "%s: can't listen on socket: %s\n",
+		    ProgramName, strerror(errno));
+		log_it("CRON", getpid(), "DEATH", "can't listen on socket");
+		exit(ERROR_EXIT);
+	}
+	chmod(s_un.sun_path, 0660);
+	umask(omask);
+
+	return(sock);
+}
+
+void
+poke_daemon(const char *spool_dir, unsigned char cookie) {
+	int sock;
+	struct sockaddr_un s_un;
+
+	(void) utime(spool_dir, NULL);		/* old poke method */
+
+	bzero(&s_un, sizeof(s_un));
+	if (!glue_strings(s_un.sun_path, sizeof s_un.sun_path, SPOOL_DIR,
+	    CRONSOCK, '/')) {
+		fprintf(stderr, "%s: %s/%s: path too long\n",
+			ProgramName, SPOOL_DIR, CRONSOCK);
+		return;
+	}
+	s_un.sun_family = AF_UNIX;
+#ifdef SUN_LEN
+	s_un.sun_len = SUN_LEN(&s_un);
+#endif
+	(void) signal(SIGPIPE, SIG_IGN);
+	if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) >= 0 &&
+	    connect(sock, (struct sockaddr *)&s_un, sizeof(s_un)) == 0)
+		write(sock, &cookie, 1);
+	else
+		fprintf(stderr, "%s: warning, cron does not appear to be "
+		    "running.\n", ProgramName);
+	if (sock >= 0)
+		close(sock);
+	(void) signal(SIGPIPE, SIG_DFL);
+}

@@ -38,14 +38,23 @@ static	void	usage(void),
 		parse_args(int c, char *v[]);
 
 static	volatile sig_atomic_t	got_sighup, got_sigchld;
-static	int			timeRunning, virtualTime, clockTime;
+static	int			timeRunning, virtualTime, clockTime, cronSock;
 static	long			GMToff;
+static	cron_db			database;
+#ifdef ATRUN
+static	at_db			at_database;
+static	double			batch_maxload = BATCH_MAXLOAD;
+#endif
 
 static void
 usage(void) {
 	const char **dflags;
 
-	fprintf(stderr, "usage:  %s [-n] [-x [", ProgramName);
+	fprintf(stderr, "usage: %s%s [-n] [-x [", ProgramName
+#ifdef ATRUN
+	    ," [-l load_avg]"
+#endif
+	);
 	for (dflags = DebugFlagNames; *dflags; dflags++)
 		fprintf(stderr, "%s%s", *dflags, dflags[1] ? "," : "]");
 	fprintf(stderr, "]\n");
@@ -55,7 +64,6 @@ usage(void) {
 int
 main(int argc, char *argv[]) {
 	struct sigaction sact;
-	cron_db	database;
 	int fd;
 
 	ProgramName = argv[0];
@@ -83,6 +91,8 @@ main(int argc, char *argv[]) {
 	sact.sa_handler = quit;
 	(void) sigaction(SIGINT, &sact, NULL);
 	(void) sigaction(SIGTERM, &sact, NULL);
+	sact.sa_handler = SIG_IGN;
+	(void) sigaction(SIGPIPE, &sact, NULL);
 
 	acquire_daemonlock(0);
 	set_cron_uid();
@@ -124,10 +134,17 @@ main(int argc, char *argv[]) {
 	}
 
 	acquire_daemonlock(0);
+	cronSock = open_socket();
 	database.head = NULL;
 	database.tail = NULL;
 	database.mtim = ts_zero;
 	load_database(&database);
+#ifdef ATRUN
+	at_database.head = NULL;
+	at_database.tail = NULL;
+	at_database.mtim = ts_zero;
+	scan_atjobs(&at_database, NULL);
+#endif
 	set_time(TRUE);
 	run_reboot_jobs(&database);
 	timeRunning = virtualTime = clockTime;
@@ -249,6 +266,12 @@ main(int argc, char *argv[]) {
 		/* Jobs to be run (if any) are loaded; clear the queue. */
 		job_runqueue();
 
+#ifdef ATRUN
+		/* Run any jobs in the at queue. */
+		atrun(&at_database, batch_maxload,
+		    timeRunning * SECONDS_PER_MINUTE - GMToff);
+#endif
+
 		/* Check to see if we received a signal while running jobs. */
 		if (got_sighup) {
 			got_sighup = 0;
@@ -259,6 +282,9 @@ main(int argc, char *argv[]) {
 			sigchld_reaper();
 		}
 		load_database(&database);
+#ifdef ATRUN
+		scan_atjobs(&at_database, NULL);
+#endif
 	}
 }
 
@@ -284,7 +310,7 @@ find_jobs(int vtime, cron_db *db, int doWild, int doNonWild) {
 	const struct tm * const now_r = gmtime_r(&virtualSecond, &now);
 	const struct tm * const tom_r = gmtime_r(&virtualTomorrow, &tom);
 
-	/* make 0-based values out of these so we can use them as indicies
+	/* make 0-based values out of these so we can use them as indices
 	 */
 	const int minute = now.tm_min -FIRST_MINUTE;
 	const int hour = now.tm_hour -FIRST_HOUR;
@@ -357,33 +383,82 @@ set_time(int initialize) {
  */
 static void
 cron_sleep(int target) {
-	time_t t1, t2;
-	int seconds_to_wait;
+	int fd, nfds;
+	unsigned char poke;
+	struct timeval t1, t2, tv;
+	struct sockaddr_un s_un;
+	socklen_t sunlen;
+	static fd_set *fdsr;
 
-	t1 = time(NULL) + GMToff;
-	seconds_to_wait = (int)(target * SECONDS_PER_MINUTE - t1) + 1;
-	Debug(DSCH, ("[%ld] Target time=%ld, sec-to-wait=%d\n",
-	    (long)getpid(), (long)target*SECONDS_PER_MINUTE, seconds_to_wait))
+	gettimeofday(&t1, NULL);
+	t1.tv_sec += GMToff;
+	tv.tv_sec = (target * SECONDS_PER_MINUTE - t1.tv_sec) + 1;
+	tv.tv_usec = 0;
 
-	while (seconds_to_wait > 0 && seconds_to_wait < 65) {
-		sleep((unsigned int) seconds_to_wait);
+	if (fdsr == NULL) {
+		fdsr = (fd_set *)calloc(howmany(cronSock + 1, NFDBITS),
+		    sizeof(fd_mask));
+	}
 
-		/*
-		 * Check to see if we were interrupted by a signal.
-		 * If so, service the signal(s) then continue sleeping
-		 * where we left off.
-		 */
-		if (got_sighup) {
-			got_sighup = 0;
-			log_close();
+	while (timerisset(&tv) && tv.tv_sec < 65) {
+		Debug(DSCH, ("[%ld] Target time=%ld, sec-to-wait=%ld\n",
+		    (long)getpid(), (long)target*SECONDS_PER_MINUTE, tv.tv_sec))
+
+		poke = RELOAD_CRON | RELOAD_AT;
+		if (fdsr)
+			FD_SET(cronSock, fdsr);
+		/* Sleep until we time out, get a poke, or get a signal. */
+		nfds = select(cronSock + 1, fdsr, NULL, NULL, &tv);
+		if (nfds == 0)
+			break;		/* timer expired */
+		if (nfds == -1 && errno != EINTR)
+			break;		/* an error occurred */
+		if (nfds > 0) {
+			Debug(DSCH, ("[%ld] Got a poke on the socket\n",
+			    (long)getpid()))
+			sunlen = sizeof(s_un);
+			fd = accept(cronSock, (struct sockaddr *)&s_un, &sunlen);
+			if (fd >= 0 && fcntl(fd, F_SETFL, O_NONBLOCK) == 0) {
+				(void) read(fd, &poke, 1);
+				close(fd);
+				if (poke & RELOAD_CRON)
+					load_database(&database);
+#ifdef ATRUN
+				if (poke & RELOAD_AT) {
+					/*
+					 * We run any pending at jobs right
+					 * away so that "at now" really runs
+					 * jobs immediately.
+					 */
+					gettimeofday(&t2, NULL);
+					if (scan_atjobs(&at_database, &t2))
+						atrun(&at_database,
+						    batch_maxload, t2.tv_sec);
+				}
+#endif
+			}
+		} else {
+			/* Interrupted by a signal. */
+			if (got_sighup) {
+				got_sighup = 0;
+				log_close();
+			}
+			if (got_sigchld) {
+				got_sigchld = 0;
+				sigchld_reaper();
+			}
 		}
-		if (got_sigchld) {
-			got_sigchld = 0;
-			sigchld_reaper();
-		}
-		t2 = time(NULL) + GMToff;
-		seconds_to_wait -= (int)(t2 - t1);
-		t1 = t2;
+
+		/* Adjust tv and continue where we left off.  */
+		gettimeofday(&t2, NULL);
+		t2.tv_sec += GMToff;
+		timersub(&t2, &t1, &t1);
+		timersub(&tv, &t1, &tv);
+		memcpy(&t1, &t2, sizeof(t1));
+		if (tv.tv_sec < 0)
+			tv.tv_sec = 0;
+		if (tv.tv_usec < 0)
+			tv.tv_usec = 0;
 	}
 }
 
@@ -435,8 +510,9 @@ sigchld_reaper(void) {
 static void
 parse_args(int argc, char *argv[]) {
 	int argch;
+	char *ep;
 
-	while (-1 != (argch = getopt(argc, argv, "nM:x:"))) {
+	while (-1 != (argch = getopt(argc, argv, "l:nM:x:"))) {
 		switch (argch) {
 		default:
 			usage();
@@ -444,6 +520,19 @@ parse_args(int argc, char *argv[]) {
 			if (!set_debug_flags(optarg))
 				usage();
 			break;
+#ifdef ATRUN
+		case 'l':
+			errno = 0;
+			batch_maxload = strtod(optarg, &ep);
+			if (*ep != '\0' || ep == optarg || errno == ERANGE ||
+			    batch_maxload < 0) {
+				fprintf(stderr,
+				    "%s: illegal load average: %s\n",
+				    ProgramName, optarg);
+				usage();
+			}
+			break;
+#endif
 		case 'M':
 			if (strlen(optarg) == 0)
 				usage();

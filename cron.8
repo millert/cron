@@ -40,9 +40,14 @@ searches /var/cron/tabs for crontab files which are named after accounts in
 .I Cron
 also searches for /etc/crontab which is in a different format (see
 .IR crontab (5)).
+In addition,
+.I cron
+scans /var/cron/atjobs for pending
+.IR at (1)
+jobs.
 .I Cron
-then wakes up every minute, examining all stored crontabs, checking each
-command to see if it should be run in the current minute.  When executing
+then wakes up every minute, examining all stored crontabs and at jobs, checking
+each command to see if it should be run in the current minute.  When executing
 commands, any output is mailed to the owner of the crontab (or to the user
 named in the MAILTO environment variable in the crontab, if such exists).
 .PP

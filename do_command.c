@@ -23,7 +23,6 @@ static char rcsid[] = "$Id: do_command.c,v 1.12 2021/02/07 00:20:00 vixie Exp $"
 #include "cron.h"
 
 static void		child_process(const entry *, const user *);
-static int		safe_p(const char *, const char *);
 
 void
 do_command(const entry *e, const user *u) {
@@ -471,6 +470,7 @@ child_process(const entry *e, const user *u) {
 				fprintf(mail, "Subject: Cron <%s@%s> %s\n",
 					usernm, first_word(hostname, "."),
 					e->cmd);
+				fprintf(mail, "Auto-Submitted: auto-generated\n");
 #ifdef MAIL_DATE
 				fprintf(mail, "Date: %s\n",
 					arpadate(&StartTime));
@@ -558,7 +558,7 @@ child_process(const entry *e, const user *u) {
 	}
 }
 
-static int
+int
 safe_p(const char *usernm, const char *s) {
 	static const char safe_delim[] = "@!:%-.,";     /* conservative! */
 	const char *t;

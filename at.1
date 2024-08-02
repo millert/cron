@@ -1,0 +1,375 @@
+.\" Copyright (C) 1993, 1994  Thomas Koenig
+.\" Copyright (C) 1993  David Parsons
+.\" Copyright (C) 2002  Todd C. Miller
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. The name of the author(s) may not be used to endorse or promote
+.\"    products derived from this software without specific prior written
+.\"    permission.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR(S) ``AS IS'' AND ANY EXPRESS OR
+.\" IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+.\" OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+.\" IN NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+.\" NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+.\" DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+.\" THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+.\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+.\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.TH AT 1 "13 May 2002"
+.SH NAME
+at, batch, atq, atrm \- queue, examine or delete jobs for later execution
+.SH SYNOPSIS
+.B at
+.RB [ -bm ]
+.RB [ -f
+.IR file ]
+.RB [ -l
+.RI [ "user ..." ]]
+.RB [ -q
+.IR queue ]
+.RB -t
+.I time_arg
+|
+.I timespec
+.br
+.B at
+.B -c
+|
+.B -r
+.I "job ..."
+.br
+.B batch
+.RB [ -m ]
+.RB [ -f
+.IR file ]
+.RB [ -q
+.IR queue ]
+.RI [ timespec ]
+.SH DESCRIPTION
+.B at
+and
+.B batch
+read commands from standard input or a specified file which
+are to be executed at a later time, via the user's shell as
+specified by the
+.SM SHELL
+environment variable.
+If
+.SM SHELL
+is not set, the shell in the user's password database entry is used
+instead.
+If all else fails,
+.B /bin/sh
+will be used.
+.PP
+The related programs are as follows:
+.TP 8
+.BR at
+Executes commands at a specified time.
+.TP 8
+.BR batch
+Executes commands when system load levels permit.
+In other words, when
+the load average drops below 1.5, or the value specified in the invocation of
+.IR cron (8).
+.PP
+.B at
+allows some moderately complex
+.B timespec
+specifications.
+It accepts times of the form
+.B HHMM
+or
+.B HH:MM
+to run a job at a specific time of day.
+(If that time is already past, the next day is assumed.)
+You may also specify
+.B midnight,
+.B noon,
+or
+.B teatime
+(4pm)
+and you can have a time-of-day suffixed with
+.B AM
+or
+.B PM
+for running in the morning or the evening.
+You can also say what day the job will be run,
+by giving a date in the form
+.B month-name
+.B day
+with an optional
+.BR year ,
+or giving a date of the form
+.BR DD.MM.CCYY ,
+.BR DD.MM.YY ,
+.BR MM/DD/CCYY ,
+.BR MM/DD/YY ,
+.BR MMDDCCYY ,
+or
+.BR MMDDYY .
+.PP
+The year may be given as two or four digits.
+If the year is given as two digits, it is taken to occur as soon as
+possible in the future, which may be in the next century --
+unless it's last year, in which case it's considered to be
+a typo.
+.PP
+The specification of a date must follow the specification
+of the time of day.
+You can also give times like
+.B now
+.B \+
+.I count
+.I time-units,
+where the time-units can be
+.B minutes,
+.B hours,
+.B days,
+or
+.B weeks
+and you can tell
+.B at
+to run the job today by suffixing the time with
+.B today
+and to run the job tomorrow by suffixing the time with
+.BR tomorrow .
+.PP
+For example, to run a job at 4pm three days from now, you would do
+.B at 4pm + 3 days.
+To run a job at 10:00am on July 31, you would do
+.B at 10am Jul 31.
+To run a job at 1am tomorrow, you would do
+.B at 1am tomorrow.
+.PP
+The
+.B at
+utility also supports the time format used by
+.IR touch (1)
+(see the
+.B -t
+option).
+.PP
+For both
+.BR at " and " batch ,
+commands are read from standard input (or the file specified
+with the
+.B -f
+option) and executed.
+The working directory, the environment (except for the variables
+.BR TERM ,
+.BR TERMCAP ,
+.BR DISPLAY
+and
+.BR _ )
+and the umask are retained from the time of invocation.
+An
+.B at
+or
+.B batch
+command invoked from a
+.IR su (1)
+shell will retain the current user ID.
+The user will be mailed standard error and standard output from his
+commands, if any.
+Mail will be sent using
+.IR sendmail (8).
+If
+.B at
+is executed from a
+.IR su (1)
+shell, the owner of the login shell will receive the mail.
+.PP
+For non-root users, permission to run
+.B at
+is determined by the files
+.I /var/cron/at.allow
+and
+.IR /var/cron/at.deny .
+.br
+.IR Note :
+these files must be readable by group crontab (if they exist).
+.PP
+If the file
+.I /var/cron/at.allow
+exists, only usernames mentioned in it are allowed to use
+.BR at .
+If
+.I /var/cron/at.allow
+does not exist,
+.I /var/cron/at.deny
+is checked.
+Every username not mentioned in it is then allowed to use
+.BR at .
+If neither exists, only the superuser is allowed to run
+.BR at .
+.PP
+An empty
+.I /var/cron/at.deny
+means that every user is allowed to use these commands.
+This is the default configuration.
+.SH OPTIONS
+.TP 8
+.B \-b
+An alias for
+.BR batch .
+.TP
+.BR \-c "job ..."
+Prints the jobs listed on the command line to standard output.
+.TP
+.BI \-f " file"
+Reads the job from
+.B file
+rather than standard input.
+.TP
+\fB\-l\fR [\fIuser ...\fR]
+Displays the queue of jobs which are currently awaiting execution.
+If a
+.Ar user
+argument is specified, only jobs belonging to that user will
+be displayed.
+Unless the user is the superuser, only the user's own jobs will be
+displayed.
+.TP
+.B \-m
+Send mail to the user when the job has completed even if there was no
+output.
+.TP
+.BI \-q " queue"
+Uses the specified queue.
+A queue designation consists of a single letter.
+Valid queue designations range from
+.B a
+to
+.BR z
+and
+.B A
+to
+.BR Z .
+The
+.B c
+queue is the default for
+.B at
+and the
+.B E
+queue for
+.IR batch .
+Queues with higher letters run with increased niceness.
+If a job is submitted to a queue designated with an uppercase letter, it
+is treated as if it had been submitted to batch at that time.
+If the user specified the
+.B \-l
+option and
+.B at
+is given a specific queue, only jobs pending in that queue will be shown.
+.TP
+\fB\-r\fR [\fIjob ...\fR]
+Remove the specified job(s) from the
+.B at
+queue.
+.TP
+.BI \-t " time_arg"
+Specify the job time using the format specified by
+.IR touch (1).
+The argument should be in the form
+.B [[CC]YY]MMDDhhmm[.SS]
+where each pair of letters represents the following:
+.RS 14
+.TP
+.I CC
+The first two digits of the year (the century).
+.TP
+.I YY
+The second two digits of the year.
+.TP
+.I MM
+The month of the year, from 1 to 12.
+.TP
+.I DD
+the day of the month, from 1 to 31.
+.TP
+.I hh
+The hour of the day, from 0 to 23.
+.TP
+.I mm
+The minute of the hour, from 0 to 59.
+.TP
+.I SS
+The second of the minute, from 0 to 61.
+.RE
+.P
+.RS 7
+If the
+.I CC
+and
+.I YY
+letter pairs are not specified, the values default to the current
+year.
+If the
+.I SS
+letter pair is not specified, the value defaults to 0.
+.RE
+.SH FILES
+.nf
+/var/cron/atjobs	directory containing job files
+/var/cron/at.allow	allow permission control
+/var/cron/at.deny	deny permission control
+.fi
+.SH EXIT STATUS
+The
+.B at
+utility exits with one of the following values:
+.PP
+.nf
+0	Jobs were successfully submitted, removed, or listed.
+>0	An error occurred.
+.fi
+.SH SEE ALSO
+.IR atq (1),
+.IR atrm (1),
+.IR nice (1),
+.IR sh (1),
+.IR umask (2),
+.IR cron (8),
+.IR sendmail (8)
+.SH STANDARDS
+The
+.B at
+and
+.B batch
+utilities are compliant with the
+IEEE Std 1003.1-2008 (``POSIX'') specification.
+.PP
+The
+.B at
+flags
+.B \-bc
+and the
+.B batch
+flags
+.B \-fmq
+are extensions to that specification.
+.PP
+Behaviour for the
+.B \-l
+flag differs between this implementation and
+IEEE Std 1003.1-2008 (``POSIX'').
+.SH AUTHORS
+At was mostly written by Thomas Koenig <ig25@rz.uni-karlsruhe.de>.
+The time parsing routines are by David Parsons <orc@pell.chi.il.us>.
+.SH BUGS
+.B at
+and
+.B batch
+as presently implemented are not suitable when users are competing for
+resources.
+If this is the case for your site, you might want to consider another
+batch system, such as
+.BR nqs .

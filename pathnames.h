@@ -45,11 +45,32 @@
 			 */
 #define SPOOL_DIR	"tabs"
 
+			/* ATDIR is where the at jobs live (relative to CRONDIR)
+			 * This directory will have its modtime updated
+			 * whenever at(1) changes a crontab; this is
+			 * the signal for cron(8) to look for changes in the
+			 * jobs directory (new, changed or jobs).
+			 */
+#define AT_DIR		"atjobs"
+
+			/* CRONSOCK is the name of the socket used by at and
+			 * crontab to poke cron to re-read the at and cron
+			 * spool files while cron is asleep.
+			 * It lives in the spool directory.
+			 */
+#define	CRONSOCK	".sock"
+
 			/* cron allow/deny file.  At least cron.deny must
 			 * exist for ordinary users to run crontab.
 			 */
 #define	CRON_ALLOW	"cron.allow"
 #define	CRON_DENY	"cron.deny"
+
+			/* at allow/deny file.  At least at.deny must
+			 * exist for ordinary users to run at.
+			 */
+#define	AT_ALLOW	"at.allow"
+#define	AT_DENY		"at.deny"
 
 			/* undefining this turns off logging to a file.  If
 			 * neither LOG_FILE or SYSLOG is defined, we don't log.

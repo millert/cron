@@ -50,7 +50,6 @@ static	struct passwd	*pw;
 static	void		list_cmd(void),
 			delete_cmd(void),
 			edit_cmd(void),
-			poke_daemon(void),
 			check_error(const char *),
 			parse_args(int c, char *v[]),
 			die(int);
@@ -269,7 +268,7 @@ delete_cmd(void) {
 			perror(n);
 		exit(ERROR_EXIT);
 	}
-	poke_daemon();
+	poke_daemon(SPOOL_DIR, RELOAD_CRON);
 }
 
 static void
@@ -642,7 +641,7 @@ replace_cmd(void) {
 	TempFilename[0] = '\0';
 	log_it(RealUser, Pid, "REPLACE", User);
 
-	poke_daemon();
+	poke_daemon(SPOOL_DIR, RELOAD_CRON);
 
 done:
 	(void) signal(SIGHUP, SIG_DFL);
@@ -653,15 +652,6 @@ done:
 		TempFilename[0] = '\0';
 	}
 	return (error);
-}
-
-static void
-poke_daemon(void) {
-	if (utime(SPOOL_DIR, NULL) < OK) {
-		fprintf(stderr, "crontab: can't update mtime on spooldir\n");
-		perror(SPOOL_DIR);
-		return;
-	}
 }
 
 static void

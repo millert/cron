@@ -88,26 +88,31 @@ INFOS =								\
 	Documentation/Mail.md			\
 	README.md
 
-MANPAGES	=	bitstring.3 crontab.5 crontab.1 cron.8 putman.sh
+MANPAGES	=	at.1 atq.1 atrm.1 bitstring.3 crontab.5 crontab.1 \
+			cron.8 putman.sh
 HEADERS		=	bitstring.h cron.h config.h pathnames.h externs.h \
 			macros.h structs.h funcs.h globals.h
-SOURCES		=	cron.c crontab.c database.c do_command.c entry.c \
-			env.c job.c user.c popen.c misc.c pw_dup.c
+SOURCES		=	at.c atrun.c cron.c crontab.c database.c do_command.c \
+			entry.c env.c job.c user.c popen.c misc.c pw_dup.c
 SHAR_SOURCE	=	$(INFOS) $(MANPAGES) Makefile $(HEADERS) $(SOURCES)
-LINT_CRON	=	cron.c database.c user.c entry.c \
+LINT_CRON	=	atrun.c cron.c database.c user.c entry.c \
 			misc.c job.c do_command.c env.c popen.c pw_dup.c
 LINT_CRONTAB	=	crontab.c misc.c entry.c env.c
-CRON_OBJ	=	cron.o database.o user.o entry.o job.o do_command.o \
-			misc.o env.o popen.o pw_dup.o
+CRON_OBJ	=	atrun.o cron.o database.o user.o entry.o job.o \
+			do_command.o misc.o env.o popen.o pw_dup.o
 CRONTAB_OBJ	=	crontab.o misc.o entry.o env.o pw_dup.o
+AT_OBJ		=	at.o parsetime.o misc.o
 
-all		:	cron crontab
+all		:	at cron crontab
 
 lint		:
 			lint $(LINTFLAGS) $(LINT_CRON) $(LIBS) \
 			|grep -v "constant argument to NOT" 2>&1
 			lint $(LINTFLAGS) $(LINT_CRONTAB) $(LIBS) \
 			|grep -v "constant argument to NOT" 2>&1
+
+at		:	$(AT_OBJ)
+			$(CC) $(LDFLAGS) -o at $(AT_OBJ) $(LIBS)
 
 cron		:	$(CRON_OBJ)
 			$(CC) $(LDFLAGS) -o cron $(CRON_OBJ) $(LIBS)
@@ -120,6 +125,15 @@ install		:	all
 			$(INSTALL) -c -m 4111 -o root -s crontab $(DESTBIN)/
 #			$(INSTALL) -c -m  111 -o root -g crontab -s cron $(DESTSBIN)/
 #			$(INSTALL) -c -m 2111 -o root -g crontab -s crontab $(DESTBIN)/
+			$(INSTALL) -c -m 4111 -o root -s at $(DESTBIN)/
+#			$(INSTALL) -c -m 2111 -o root -g crontab -s at $(DESTBIN)/
+			ln -f $(DESTBIN)/at $(DESTBIN)/atrm
+			ln -f $(DESTBIN)/at $(DESTBIN)/atq
+			ln -f $(DESTBIN)/at $(DESTBIN)/atrm
+			ln -f $(DESTBIN)/at $(DESTBIN)/batch
+			sh putman.sh at.1      $(DESTMAN)
+			sh putman.sh atq.1     $(DESTMAN)
+			sh putman.sh atrm.1    $(DESTMAN)
 			sh putman.sh crontab.1 $(DESTMAN)
 			sh putman.sh cron.8    $(DESTMAN)
 			sh putman.sh crontab.5 $(DESTMAN)
@@ -130,7 +144,7 @@ distclean	:	clean
 
 clean		:
 			rm -f *.o
-			rm -f cron crontab
+			rm -f at cron crontab
 
 tags		:;	ctags ${SOURCES}
 

@@ -57,6 +57,19 @@ typedef	struct _cron_db {
 	user		*head, *tail;	/* links */
 	struct timespec mtim;		/* last modtime on spooldir */
 } cron_db;
+
+typedef struct _atjob {
+	struct _atjob	*next, *prev;	/* links */
+	uid_t		uid;		/* uid of the job */
+	gid_t		gid;		/* gid of the job */
+	int		queue;		/* name of the at queue */
+	time_t		run_time;	/* time to run at job */
+} atjob;
+
+typedef struct _at_db {
+	atjob		*head, *tail;	/* links */
+	struct timespec mtim;		/* last modtime on spooldir */
+} at_db;
 				/* in the C tradition, we only create
 				 * variables for the main program, just
 				 * extern them elsewhere.

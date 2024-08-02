@@ -25,6 +25,8 @@
 #include <sys/fcntl.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <bitstring.h>
 #include <ctype.h>

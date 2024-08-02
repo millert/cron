@@ -41,7 +41,10 @@ void		set_cron_uid(void),
 		acquire_daemonlock(int),
 		skip_comments(FILE *),
 		log_it(const char *, int, const char *, const char *),
-		log_close(void);
+		log_close(void),
+		poke_daemon(const char *, unsigned char),
+		atrun(at_db *, double, time_t),
+		mkprint(char *, unsigned char *, int);
 
 int		job_runqueue(void),
 		set_debug_flags(const char *),
@@ -55,6 +58,9 @@ int		job_runqueue(void),
 		strcmp_until(const char *, const char *, char),
 		allowed(const char *, const char *, const char *),
 		strdtb(char *),
+		open_socket(void),
+		safe_p(const char *, const char *),
+		scan_atjobs(at_db *, struct timeval *),
 		strcountstr(const char *, const char *);
 
 size_t		strlens(const char *, ...);

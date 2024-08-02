@@ -94,6 +94,10 @@
 			 LineNumber = ln; \
 			}
 
+/* Data values used on cron socket */
+#define	RELOAD_CRON	0x2
+#define	RELOAD_AT	0x4
+
 #ifdef HAVE_TM_GMTOFF
 #define	get_gmtoff(c, t)	((t)->tm_gmtoff)
 #endif
@@ -122,6 +126,19 @@
 #define	FIRST_DOW	0
 #define	LAST_DOW	7
 #define	DOW_COUNT	(LAST_DOW - FIRST_DOW + 1)
+
+/* BSD and Linux have timersub; others may not... */
+#ifndef timersub
+#define	timersub(tvp, uvp, vvp)						\
+	do {								\
+		(vvp)->tv_sec = (tvp)->tv_sec - (uvp)->tv_sec;		\
+		(vvp)->tv_usec = (tvp)->tv_usec - (uvp)->tv_usec;	\
+		if ((vvp)->tv_usec < 0) {				\
+			(vvp)->tv_sec--;				\
+			(vvp)->tv_usec += 1000000;			\
+		}							\
+	} while (0)
+#endif
 
 /*
  * Because crontab/at files may be owned by their respective users we
