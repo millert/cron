@@ -88,7 +88,7 @@ load_database(cron_db *old_db) {
 	new_db.head = new_db.tail = NULL;
 
 	if (!TEQUAL(syscron_stat.st_mtim, ts_zero))
-		process_crontab("root", NULL, SYSCRONTAB, &syscron_stat,
+		process_crontab(ROOT_USER, NULL, SYSCRONTAB, &syscron_stat,
 				&new_db, old_db);
 
 	/* we used to keep this dir open all the time, for the sake of
