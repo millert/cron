@@ -116,7 +116,7 @@
 #endif
 
 #ifndef _PATH_TMP
-# define _PATH_TMP "/tmp"
+# define _PATH_TMP "/tmp/"
 #endif
 
 #ifndef _PATH_DEVNULL
