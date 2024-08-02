@@ -282,7 +282,7 @@ edit_cmd(void) {
 	char n[MAX_FNAME], q[MAX_TEMPSTR], *editor;
 	FILE *f;
 	int ch, t, x;
-	struct stat statbuf;
+	struct stat statbuf, xstatbuf;
 	struct utimbuf utimebuf;
 	WAIT_T waiter;
 	PID_T pid, xpid;
@@ -459,6 +459,12 @@ edit_cmd(void) {
 		goto fatal;
 	}
 	if (utimebuf.modtime == statbuf.st_mtime) {
+		if (lstat(Filename, &xstatbuf) == 0 &&
+		    statbuf.st_ino != xstatbuf.st_ino) {
+			fprintf(stderr, "%s: crontab temp file moved, editor "
+				"may create backup files improperly\n",
+				ProgramName);
+		}
 		fprintf(stderr, "%s: no changes made to crontab\n",
 			ProgramName);
 		goto remove;
