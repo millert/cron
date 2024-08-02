@@ -57,13 +57,15 @@ static	int		replace_cmd(void);
 
 static void
 usage(const char *msg) {
-	fprintf(stderr, "%s: usage error: %s\n", ProgramName, msg);
-	fprintf(stderr, "usage:\t%s [-u user] file\n", ProgramName);
-	fprintf(stderr, "\t%s [-u user] [ -e | -l | -r ]\n", ProgramName);
-	fprintf(stderr, "\t\t(default operation is replace, per 1003.2)\n");
-	fprintf(stderr, "\t-e\t(edit user's crontab)\n");
-	fprintf(stderr, "\t-l\t(list user's crontab)\n");
-	fprintf(stderr, "\t-r\t(delete user's crontab)\n");
+	if (msg != NULL)
+		fprintf(stderr, "%s: usage error: %s\n", ProgramName, msg);
+	fprintf(stderr, "usage: %s [-u user] file\n", ProgramName);
+	fprintf(stderr, "       %s [-e | -l | -r] [-u user]\n", ProgramName);
+	fprintf(stderr,
+	    "\t\t(default operation is replace, per 1003.2)\n"
+	    "\t-e\t(edit user's crontab)\n"
+	    "\t-l\t(list user's crontab)\n"
+	    "\t-r\t(delete user's crontab)\n");
 	exit(ERROR_EXIT);
 }
 
@@ -171,7 +173,7 @@ parse_args(int argc, char *argv[]) {
 			Option = opt_edit;
 			break;
 		default:
-			usage("unrecognized option");
+			usage(NULL);
 		}
 	}
 
