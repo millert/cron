@@ -47,11 +47,13 @@ static	FILE		*NewCrontab;
 static	int		CheckErrorCount;
 static	enum opt_t	Option;
 static	struct passwd	*pw;
+int			editit(const char *);
 static	void		list_cmd(void),
 			delete_cmd(void),
 			edit_cmd(void),
 			check_error(const char *),
 			parse_args(int c, char *v[]),
+			copy_crontab(FILE *, FILE *),
 			die(int);
 static	int		replace_cmd(void);
 
@@ -231,7 +233,6 @@ static void
 list_cmd(void) {
 	char n[MAX_FNAME];
 	FILE *f;
-	int ch;
 
 	log_it(RealUser, Pid, "LIST", User);
 	if (!glue_strings(n, sizeof n, SPOOL_DIR, User, '/')) {
@@ -249,8 +250,8 @@ list_cmd(void) {
 	/* file is open. copy to stdout, close.
 	 */
 	Set_LineNum(1)
-	while (EOF != (ch = get_char(f)))
-		putchar(ch);
+
+	copy_crontab(f, stdout);
 	fclose(f);
 }
 
@@ -281,13 +282,11 @@ check_error(const char *msg) {
 
 static void
 edit_cmd(void) {
-	char n[MAX_FNAME], q[MAX_TEMPSTR], *editor;
+	char n[MAX_FNAME], q[MAX_TEMPSTR];
 	FILE *f;
-	int ch, t, x;
+	int t;
 	struct stat statbuf, xstatbuf;
 	struct utimbuf utimebuf;
-	WAIT_T waiter;
-	PID_T pid, xpid;
 
 	log_it(RealUser, Pid, "BEGIN EDIT", User);
 	if (!glue_strings(n, sizeof n, SPOOL_DIR, User, '/')) {
@@ -346,26 +345,7 @@ edit_cmd(void) {
 
 	Set_LineNum(1)
 
-	/* ignore the top few comments since we probably put them there.
-	 */
-	x = 0;
-	while (EOF != (ch = get_char(f))) {
-		if ('#' != ch) {
-			putc(ch, NewCrontab);
-			break;
-		}
-		while (EOF != (ch = get_char(f)))
-			if (ch == '\n')
-				break;
-		if (++x >= NHEADER_LINES)
-			break;
-	}
-
-	/* copy the rest of the crontab (if any) to the temp file.
-	 */
-	if (EOF != ch)
-		while (EOF != (ch = get_char(f)))
-			putc(ch, NewCrontab);
+	copy_crontab(f, NewCrontab);
 	fclose(f);
 	if (fflush(NewCrontab) < OK) {
 		perror(Filename);
@@ -382,11 +362,6 @@ edit_cmd(void) {
 		exit(ERROR_EXIT);
 	}
 
-	if (((editor = getenv("VISUAL")) == NULL || *editor == '\0') &&
-	    ((editor = getenv("EDITOR")) == NULL || *editor == '\0')) {
-		editor = EDITOR;
-	}
-
 	/* we still have the file open.  editors will generally rewrite the
 	 * original file rather than renaming/unlinking it and starting a
 	 * new one; even backup files are supposed to be made by copying
@@ -394,68 +369,9 @@ edit_cmd(void) {
 	 * then don't use it.  the security problems are more severe if we
 	 * close and reopen the file around the edit.
 	 */
-
-	switch (pid = fork()) {
-	case -1:
-		perror("fork");
+	if (editit(Filename) != 0)
 		goto fatal;
-	case 0:
-		/* child */
-		if (setgid(MY_GID(pw)) < 0) {
-			perror("setgid(getgid())");
-			exit(ERROR_EXIT);
-		}
-		if (setuid(MY_UID(pw)) < 0) {
-			perror("setuid(getuid())");
-			exit(ERROR_EXIT);
-		}
-		if (chdir(_PATH_TMP) < 0) {
-			perror(_PATH_TMP);
-			exit(ERROR_EXIT);
-		}
-		if (!glue_strings(q, sizeof q, editor, Filename, ' ')) {
-			fprintf(stderr, "%s: editor command line too long\n",
-			    ProgramName);
-			exit(ERROR_EXIT);
-		}
-		execlp(_PATH_BSHELL, _PATH_BSHELL, "-c", q, (char *)0);
-		perror(editor);
-		exit(ERROR_EXIT);
-		/*NOTREACHED*/
-	default:
-		/* parent */
-		break;
-	}
 
-	/* parent */
-	for (;;) {
-		xpid = waitpid(pid, &waiter, WUNTRACED);
-		if (xpid == -1) {
-			if (errno != EINTR)
-				fprintf(stderr, "%s: waitpid() failed waiting for PID %ld from \"%s\": %s\n",
-					ProgramName, (long)pid, editor, strerror(errno));
-		} else if (xpid != pid) {
-			fprintf(stderr, "%s: wrong PID (%ld != %ld) from \"%s\"\n",
-				ProgramName, (long)xpid, (long)pid, editor);
-			goto fatal;
-		} else if (WIFSTOPPED(waiter)) {
-			kill(getpid(), WSTOPSIG(waiter));
-		} else if (WIFEXITED(waiter) && WEXITSTATUS(waiter)) {
-			fprintf(stderr, "%s: \"%s\" exited with status %d\n",
-				ProgramName, editor, WEXITSTATUS(waiter));
-			goto fatal;
-		} else if (WIFSIGNALED(waiter)) {
-			fprintf(stderr,
-				"%s: \"%s\" killed; signal %d (%score dumped)\n",
-				ProgramName, editor, WTERMSIG(waiter),
-				WCOREDUMP(waiter) ?"" :"no ");
-			goto fatal;
-		} else
-			break;
-	}
-	(void)signal(SIGHUP, SIG_DFL);
-	(void)signal(SIGINT, SIG_DFL);
-	(void)signal(SIGQUIT, SIG_DFL);
 	if (fstat(t, &statbuf) < 0) {
 		perror("fstat");
 		goto fatal;
@@ -665,9 +581,134 @@ done:
 	return (error);
 }
 
+/*
+ * Execute an editor on the specified pathname, which is interpreted
+ * from the shell.  This means flags may be included.
+ *
+ * Returns -1 on error, or the exit value on success.
+ */
+int
+editit(const char *pathname)
+{
+	char *argp[4], *editor, *p;
+	void (*sighup)(int), (*sigint)(int), (*sigquit)(int), (*sigchld)(int);
+	WAIT_T waiter;
+	PID_T pid, xpid;
+	int saved_errno, ret = -1;
+	size_t len;
+
+	editor = getenv("VISUAL");
+	if (editor == NULL || editor[0] == '\0')
+		editor = getenv("EDITOR");
+	if (editor == NULL || editor[0] == '\0')
+		editor = EDITOR;
+	len = strlen(editor) + 1 + strlen(pathname) + 1;
+	p = malloc(len);
+	if (!glue_strings(p, len, editor, pathname, ' '))
+		return (-1);
+	argp[0] = "sh";
+	argp[1] = "-c";
+	argp[2] = p;
+	argp[3] = NULL;
+
+	sighup = signal(SIGHUP, SIG_IGN);
+	sigint = signal(SIGINT, SIG_IGN);
+	sigquit = signal(SIGQUIT, SIG_IGN);
+	sigchld = signal(SIGCHLD, SIG_DFL);
+	if ((pid = fork()) == -1)
+		goto done;
+	if (pid == 0) {
+		/* child */
+		if (setgid(getgid()) < 0) {
+			perror("setgid(getgid())");
+			_exit(ERROR_EXIT);
+		}
+		if (setuid(getuid()) < 0) {
+			perror("setgid(getuid())");
+			_exit(ERROR_EXIT);
+		}
+		if (chdir(_PATH_TMP) < 0) {
+			perror(_PATH_TMP);
+			_exit(ERROR_EXIT);
+		}
+		execv(_PATH_BSHELL, argp);
+		perror(p);
+		_exit(127);
+	}
+	/* parent */
+	for (;;) {
+		xpid = waitpid(pid, &waiter, WUNTRACED);
+		if (xpid == -1) {
+			if (errno != EINTR) {
+				fprintf(stderr, "%s: waitpid() failed waiting "
+					"for PID %ld from \"%s\": %s\n",
+					ProgramName, (long)pid, editor,
+					strerror(errno));
+			}
+		} else if (xpid != pid) {
+			fprintf(stderr, "%s: wrong PID (%ld != %ld) from \"%s\"\n",
+				ProgramName, (long)xpid, (long)pid, editor);
+			goto done;
+		} else if (WIFSTOPPED(waiter)) {
+			/* may be needed if crontab is setuid. */
+			kill(getpid(), WSTOPSIG(waiter));
+		} else if (WIFSIGNALED(waiter)) {
+			fprintf(stderr,
+				"%s: \"%s\" killed; signal %d%s\n",
+				ProgramName, editor, WTERMSIG(waiter),
+				WCOREDUMP(waiter) ? " (core dumped)" : "");
+			goto done;
+		} else if (WIFEXITED(waiter)) {
+			ret = WEXITSTATUS(waiter);
+			if (ret != 0) {
+				fprintf(stderr,
+					"%s: \"%s\" exited with status %d\n",
+					ProgramName, editor, WEXITSTATUS(waiter));
+			}
+			goto done;
+		}
+	}
+
+ done:
+	saved_errno = errno;
+	(void)signal(SIGHUP, sighup);
+	(void)signal(SIGINT, sigint);
+	(void)signal(SIGQUIT, sigquit);
+	(void)signal(SIGCHLD, sigchld);
+	free(p);
+	errno = saved_errno;
+	return (ret);
+}
+
 static void
 die(int x) {
 	if (TempFilename[0])
 		(void) unlink(TempFilename);
 	_exit(ERROR_EXIT);
+}
+
+static void
+copy_crontab(FILE *f, FILE *out) {
+	int ch, x;
+
+	/* ignore the top few comments since we probably put them there.
+	 */
+	x = 0;
+	while (EOF != (ch = get_char(f))) {
+		if ('#' != ch) {
+			putc(ch, out);
+			break;
+		}
+		while (EOF != (ch = get_char(f)))
+			if (ch == '\n')
+				break;
+		if (++x >= NHEADER_LINES)
+			break;
+	}
+
+	/* copy out the rest of the crontab (if any)
+	 */
+	if (EOF != ch)
+		while (EOF != (ch = get_char(f)))
+			putc(ch, out);
 }
