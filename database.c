@@ -58,7 +58,7 @@ load_database(cron_db *old_db) {
 	 */
 	if (stat(SPOOL_DIR, &statbuf) < OK) {
 		log_it("CRON", getpid(), "STAT FAILED", SPOOL_DIR);
-		(void) exit(ERROR_EXIT);
+		return;
 	}
 
 	/* track system crontab file
@@ -97,7 +97,7 @@ load_database(cron_db *old_db) {
 	 */
 	if (!(dir = opendir(SPOOL_DIR))) {
 		log_it("CRON", getpid(), "OPENDIR FAILED", SPOOL_DIR);
-		(void) exit(ERROR_EXIT);
+		return;
 	}
 
 	while (NULL != (dp = readdir(dir))) {
