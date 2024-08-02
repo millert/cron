@@ -186,6 +186,7 @@ process_crontab(const char *uname, const char *fname, const char *tabname,
 {
 	struct passwd *pw = NULL;
 	int crontab_fd = OK - 1;
+	mode_t tabmask, tabperm;
 	user *u;
 
 	if (fname == NULL) {
@@ -214,16 +215,22 @@ process_crontab(const char *uname, const char *fname, const char *tabname,
 		log_it(fname, getpid(), "NOT REGULAR", tabname);
 		goto next_crontab;
 	}
-	if ((statbuf->st_mode & 07777) != 0600) {
-		log_it(fname, getpid(), "BAD FILE MODE", tabname);
-		goto next_crontab;
+	/* Looser permissions on system crontab. */
+	tabmask = pw ? 07777 : (07777 & ~(S_IWUSR|S_IRGRP|S_IROTH));
+	tabperm = pw ? (S_IRUSR|S_IWUSR) : S_IRUSR;
+	if ((statbuf->st_mode & tabmask) != tabperm) {
+		/* Looser permissions on system crontab. */
+		if (pw != NULL || (statbuf->st_mode & 022) != 0) {
+			log_it(fname, getpid(), "BAD FILE MODE", tabname);
+			goto next_crontab;
+		}
 	}
 	if (statbuf->st_uid != ROOT_UID && (pw == NULL ||
 	    statbuf->st_uid != pw->pw_uid || strcmp(uname, pw->pw_name) != 0)) {
 		log_it(fname, getpid(), "WRONG FILE OWNER", tabname);
 		goto next_crontab;
 	}
-	if (statbuf->st_nlink != 1) {
+	if (pw != NULL && statbuf->st_nlink != 1) {
 		log_it(fname, getpid(), "BAD LINK COUNT", tabname);
 		goto next_crontab;
 	}
