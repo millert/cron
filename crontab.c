@@ -472,7 +472,10 @@ edit_cmd(void) {
 			printf("Do you want to retry the same edit? ");
 			fflush(stdout);
 			q[0] = '\0';
-			(void) fgets(q, sizeof q, stdin);
+			if (fgets(q, sizeof q, stdin) == NULL) {
+				putchar('\n');
+				goto abandon;
+			}
 			switch (q[0]) {
 			case 'y':
 			case 'Y':
