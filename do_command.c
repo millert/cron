@@ -138,7 +138,7 @@ child_process(const entry *e, const user *u) {
 	switch (vfork()) {
 	case -1:
 		log_it("CRON", getpid(), "error", "can't vfork");
-		exit(ERROR_EXIT);
+		_exit(ERROR_EXIT);
 		/*NOTREACHED*/
 	case 0:
 		Debug(DPROC, ("[%ld] grandchild process vfork()'ed\n",
@@ -187,7 +187,7 @@ child_process(const entry *e, const user *u) {
 		dup2(STDOUT, STDERR);
 
 		/* set our directory, uid and gid.  Set gid first, since once
-		 * we set uid, we've lost root privledges.
+		 * we set uid, we've lost root privileges.
 		 */
 #ifdef LOGIN_CAP
 		{
@@ -269,8 +269,8 @@ child_process(const entry *e, const user *u) {
 			}
 # endif /*DEBUGGING*/
 			execle(shell, shell, "-c", e->cmd, (char *)0, e->envp);
-			fprintf(stderr, "execl: couldn't exec `%s'\n", shell);
-			perror("execl");
+			fprintf(stderr, "execle: couldn't exec `%s'\n", shell);
+			perror("execle");
 			_exit(ERROR_EXIT);
 		}
 		break;
@@ -348,7 +348,7 @@ child_process(const entry *e, const user *u) {
 
 		Debug(DPROC, ("[%ld] child2 done sending to grandchild\n",
 			      (long)getpid()))
-		exit(0);
+		_exit(OK_EXIT);
 	}
 
 	/* close the pipe to the grandkiddie's stdin, since its wicked uncle
