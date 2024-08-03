@@ -375,7 +375,8 @@ load_entry(FILE *file, void (*error_func)(const char *),
 
 	/* If the first character of the command is '-' it is a cron option.
 	 */
-	while ((ch = get_char(file)) == '-') {
+	ch = get_char(file);
+	while (ch == '-') {
 		switch (ch = get_char(file)) {
 		case 'q':
 			e->flags |= DONT_LOG;
