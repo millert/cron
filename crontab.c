@@ -327,7 +327,7 @@ edit_cmd(void) {
 		perror(Filename);
 		goto fatal;
 	}
-#ifdef HAS_FCHOWN
+#ifdef HAVE_FCHOWN
 	if (fchown(t, MY_UID(pw), MY_GID(pw)) < 0) {
 		perror("fchown");
 		goto fatal;
@@ -531,7 +531,7 @@ replace_cmd(void) {
 
 	file_owner = (getgid() == getegid()) ? ROOT_UID : pw->pw_uid;
 
-#ifdef HAS_FCHOWN
+#ifdef HAVE_FCHOWN
 	if (fchown(fileno(tmp), file_owner, -1) < OK) {
 		perror("fchown");
 		fclose(tmp);
