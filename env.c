@@ -118,7 +118,7 @@ enum env_state {
 	VALUEI,		/* First char of VALUE, may be quote */
 	VALUE,		/* Subsequent chars of VALUE */
 	FINI,		/* All done, skipping trailing whitespace */
-	ERROR,		/* Error */
+	ERROR		/* Error */
 };
 
 /* return	ERR = end of file
@@ -209,7 +209,7 @@ load_env(char *envstr, FILE *f) {
 	}
 	if (state != FINI && !(state == VALUE && !quotechar)) {
 		Debug(DPARS, ("load_env, not an env var, state = %d\n", state))
-		fseek(f, filepos, 0);
+		fseek(f, filepos, SEEK_SET);
 		Set_LineNum(fileline);
 		return (FALSE);
 	}
