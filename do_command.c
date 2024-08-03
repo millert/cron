@@ -253,6 +253,8 @@ child_process(const entry *e, const user *u) {
 #endif /* LOGIN_CAP */
 		chdir(env_get("HOME", e->envp));
 
+		(void) signal(SIGPIPE, SIG_DFL);
+
 		/*
 		 * Exec the command.
 		 */

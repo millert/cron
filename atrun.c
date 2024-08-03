@@ -504,6 +504,8 @@ run_job(atjob *job, char *atfile)
 		}
 #endif /*DEBUGGING*/
 
+		(void) signal(SIGPIPE, SIG_DFL);
+
 		/*
 		 * Exec /bin/sh with stdin connected to the at job file
 		 * and stdout/stderr hooked up to our parent.
