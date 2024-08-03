@@ -94,6 +94,8 @@
 			/* 4.3BSD-style crontab */
 #define SYSCRONTAB	"/etc/crontab"
 
+#define SYSCRONDIR	"/etc/cron.d"
+
 			/* what editor to use if no EDITOR or VISUAL
 			 * environment variable specified.
 			 */

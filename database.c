@@ -27,6 +27,18 @@ static char rcsid[] = "$Id: database.c,v 1.7 2004/01/23 18:56:42 vixie Exp $";
 
 #define TMAX(a,b) (is_greater_than(a,b)?(a):(b))
 
+struct spooldir {
+	const char *path;
+	const char *uname;
+	const char *fname;
+};
+
+static struct spooldir spools[] = {
+	{ SPOOL_DIR, NULL, NULL },
+	{ SYSCRONDIR, "root", "*system*" },
+	{ NULL, NULL, NULL }
+};
+
 static bool
 is_greater_than(struct timespec left, struct timespec right) {
 	if (left.tv_sec > right.tv_sec)
@@ -48,22 +60,22 @@ load_database(cron_db *old_db) {
 	DIR_T *dp;
 	DIR *dir;
 	user *u, *nu;
+	struct spooldir *p;
+	struct timespec maxtime;
 
 	Debug(DLOAD, ("[%ld] load_database()\n", (long)getpid()))
-
-	/* before we start loading any data, do a stat on SPOOL_DIR
-	 * so that if anything changes as of this moment (i.e., before we've
-	 * cached any of the database), we'll see the changes next time.
-	 */
-	if (stat(SPOOL_DIR, &statbuf) < OK) {
-		log_it("CRON", getpid(), "STAT FAILED", SPOOL_DIR);
-		return;
-	}
 
 	/* track system crontab file
 	 */
 	if (stat(SYSCRONTAB, &syscron_stat) < OK)
 		syscron_stat.st_mtim = ts_zero;
+
+	maxtime = syscron_stat.st_mtim;
+	for (p = spools; p->path != NULL; p++) {
+		if (stat(p->path, &statbuf) == OK &&
+		    timespeccmp(&statbuf.st_mtim, &maxtime, >))
+			maxtime = statbuf.st_mtim;
+	}
 
 	/* if spooldir's mtime has not changed, we don't need to fiddle with
 	 * the database.
@@ -72,7 +84,7 @@ load_database(cron_db *old_db) {
 	 * so is guaranteed to be different than the stat() mtime the first
 	 * time this function is called.
 	 */
-	if (TEQUAL(old_db->mtim, TMAX(statbuf.st_mtim, syscron_stat.st_mtim))) {
+	if (TEQUAL(old_db->mtim, maxtime)) {
 		Debug(DLOAD, ("[%ld] spool dir mtime unch, no load needed.\n",
 			      (long)getpid()))
 		return;
@@ -83,45 +95,66 @@ load_database(cron_db *old_db) {
 	 * actually changed.  Whatever is left in the old database when
 	 * we're done is chaff -- crontabs that disappeared.
 	 */
-	new_db.mtim = TMAX(statbuf.st_mtim, syscron_stat.st_mtim);
+	new_db.mtim = maxtime;
 	new_db.head = new_db.tail = NULL;
 
 	if (!TEQUAL(syscron_stat.st_mtim, ts_zero))
-		process_crontab(ROOT_USER, NULL, SYSCRONTAB, &syscron_stat,
-				&new_db, old_db);
+		process_crontab(ROOT_USER, "*system*", SYSCRONTAB,
+				&syscron_stat, &new_db, old_db);
 
-	/* we used to keep this dir open all the time, for the sake of
-	 * efficiency.  however, we need to close it in every fork, and
-	 * we fork a lot more often than the mtime of the dir changes.
-	 */
-	if (!(dir = opendir(SPOOL_DIR))) {
-		log_it("CRON", getpid(), "OPENDIR FAILED", SPOOL_DIR);
-		return;
-	}
-
-	while (NULL != (dp = readdir(dir))) {
-		char fname[MAXNAMLEN+1], tabname[MAXNAMLEN+1];
-
-		/* avoid file names beginning with ".".  this is good
-		 * because we would otherwise waste two guaranteed calls
-		 * to getpwnam() for . and .., and also because user names
-		 * starting with a period are just too nasty to consider.
-		 */
-		if (dp->d_name[0] == '.')
+	for (p = spools; p->path != NULL; p++) {
+		if (!(dir = opendir(p->path))) {
+			if (p->uname != NULL)
+				log_it("CRON", getpid(), "OPENDIR FAILED",
+				    p->path);
 			continue;
+		}
 
-		if (strlen(dp->d_name) >= sizeof fname)
-			continue;	/* XXX log? */
-		(void) strcpy(fname, dp->d_name);
-		
-		if (!glue_strings(tabname, sizeof tabname, SPOOL_DIR,
-				  fname, '/'))
-			continue;	/* XXX log? */
+		while (NULL != (dp = readdir(dir))) {
+			char fname[MAXNAMLEN+1], tabname[MAXNAMLEN+1];
 
-		process_crontab(fname, fname, tabname,
-				&statbuf, &new_db, old_db);
+			if (dp->d_name[0] == '\0')
+				continue;	/* shouldn't happen */
+
+			if (p->uname == NULL) {
+				/*
+				 * cron user spool: skip files that begin
+				 * with a dot ('.') to avoid "." and "..".
+				 */
+				if (dp->d_name[0] == '.')
+					continue;
+			} else {
+				/*
+				 * system cron.d spool: don't try to parse any
+				 * files containing a dot ('.') or ending with
+				 * a tilde ('~'). This catches the case of "."
+				 * and ".." as well as preventing the parsing
+				 * of many editor files, temporary files and
+				 * those saved by package upgrades.
+				 */
+				if (strchr(dp->d_name, '.') != NULL ||
+				    dp->d_name[strlen(dp->d_name)-1] == '~')
+					continue;
+			}
+
+			if (strlen(dp->d_name) >= sizeof fname)
+				continue;	/* XXX log? */
+			(void) strcpy(fname, dp->d_name);
+
+			if (!glue_strings(tabname, sizeof tabname, SPOOL_DIR,
+					  fname, '/'))
+				continue;	/* XXX log? */
+
+			process_crontab(p->uname ? p->uname : fname,
+					p->fname ? p->fname : fname,
+					tabname, &statbuf, &new_db, old_db);
+		}
+		/* we used to keep this dir open all the time, for the sake of
+		 * efficiency.  however, we need to close it in every fork, and
+		 * we fork a lot more often than the mtime of the dir changes.
+		 */
+		closedir(dir);
 	}
-	closedir(dir);
 
 	/* if we don't do this, then when our children eventually call
 	 * getpwnam() in do_command.c's child_process to verify MAILTO=,
@@ -185,17 +218,32 @@ process_crontab(const char *uname, const char *fname, const char *tabname,
 {
 	struct passwd *pw = NULL;
 	int crontab_fd = OK - 1;
+	struct stat lstatbuf;
 	mode_t tabmask, tabperm;
 	user *u;
 
-	if (fname == NULL) {
-		/* must be set to something for logging purposes.
-		 */
-		fname = "*system*";
-	} else if ((pw = getpwnam(uname)) == NULL) {
+	if (strcmp(fname, "*system*") != 0 && (pw = getpwnam(uname)) == NULL) {
 		/* file doesn't have a user in passwd file.
 		 */
 		log_it(fname, getpid(), "ORPHAN", "no passwd entry");
+		goto next_crontab;
+	}
+
+	if (lstat(tabname, &lstatbuf) < OK) {
+		log_it(fname, getpid(), "CAN'T LSTAT", tabname);
+		goto next_crontab;
+	}
+	if (!S_ISREG(lstatbuf.st_mode)) {
+		log_it(fname, getpid(), "NOT REGULAR", tabname);
+		goto next_crontab;
+	}
+	if ((!pw && (lstatbuf.st_mode & 07533) != 0400) ||
+	    (pw && (lstatbuf.st_mode & 07577) != 0400)) {
+		log_it(fname, getpid(), "BAD FILE MODE", tabname);
+		goto next_crontab;
+	}
+	if (lstatbuf.st_nlink != 1) {
+		log_it(fname, getpid(), "BAD LINK COUNT", tabname);
 		goto next_crontab;
 	}
 
@@ -231,6 +279,16 @@ process_crontab(const char *uname, const char *fname, const char *tabname,
 	}
 	if (pw != NULL && statbuf->st_nlink != 1) {
 		log_it(fname, getpid(), "BAD LINK COUNT", tabname);
+		goto next_crontab;
+	}
+	if (lstatbuf.st_dev != statbuf->st_dev ||
+	    lstatbuf.st_ino != statbuf->st_ino) {
+		log_it(fname, getpid(), "FILE CHANGED DURING OPEN", tabname);
+		goto next_crontab;
+	}
+	if (lstatbuf.st_dev != statbuf->st_dev ||
+	    lstatbuf.st_ino != statbuf->st_ino) {
+		log_it(fname, getpid(), "FILE CHANGED DURING OPEN", tabname);
 		goto next_crontab;
 	}
 

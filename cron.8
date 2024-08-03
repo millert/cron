@@ -38,7 +38,8 @@ starting it out of init.
 searches /var/cron/tabs for crontab files which are named after accounts in
 /etc/passwd; crontabs found are loaded into memory.
 .I Cron
-also searches for /etc/crontab which is in a different format (see
+also searches for /etc/crontab as well as for any files in the
+/etc/cron.d directory, which are in a different format (see
 .IR crontab (5)).
 In addition,
 .I cron
