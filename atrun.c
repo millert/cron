@@ -36,8 +36,6 @@ static void run_job(atjob *, char *);
 #define	GID_MAX	INT_MAX
 #endif
 
-#define TEQUAL(a,b) (a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec)
-
 /*
  * Scan the at jobs dir and build up a list of jobs found.
  */

@@ -140,6 +140,8 @@
 	} while (0)
 #endif
 
+#define TEQUAL(a,b) (a.tv_sec == b.tv_sec && a.tv_nsec == b.tv_nsec)
+
 /*
  * Because crontab/at files may be owned by their respective users we
  * take extreme care in opening them.  If the OS lacks the O_NOFOLLOW

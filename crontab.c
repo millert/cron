@@ -286,7 +286,11 @@ edit_cmd(void) {
 	FILE *f;
 	int t;
 	struct stat statbuf, xstatbuf;
+#ifdef HAVE_FUTIMENS
+	struct timespec ts[2];
+#else
 	struct utimbuf utimebuf;
+#endif
 
 	log_it(RealUser, Pid, "BEGIN EDIT", User);
 	if (!glue_strings(n, sizeof n, SPOOL_DIR, User, '/')) {
@@ -310,8 +314,13 @@ edit_cmd(void) {
 		perror("fstat");
 		goto fatal;
 	}
+#ifdef HAVE_FUTIMENS
+	ts[0] = statbuf.st_atim;
+	ts[1] = statbuf.st_mtim;
+#else
 	utimebuf.actime = statbuf.st_atime;
 	utimebuf.modtime = statbuf.st_mtime;
+#endif
 
 	/* Turn off signals. */
 	(void)signal(SIGHUP, SIG_IGN);
@@ -351,7 +360,19 @@ edit_cmd(void) {
 		perror(Filename);
 		exit(ERROR_EXIT);
 	}
+#ifdef HAVE_FUTIMENS
+	futimens(t, ts);
+#else
+	if (swap_uids() < OK) {
+		perror("swapping uids");
+		exit(ERROR_EXIT);
+	}
 	utime(Filename, &utimebuf);
+	if (swap_uids_back() < OK) {
+		perror("swapping uids back");
+		exit(ERROR_EXIT);
+	}
+#endif
  again:
 	rewind(NewCrontab);
 	if (ferror(NewCrontab)) {
@@ -376,7 +397,11 @@ edit_cmd(void) {
 		perror("fstat");
 		goto fatal;
 	}
+#ifdef HAVE_FUTIMENS
+	if (TEQUAL(&ts[1], &statbuf.st_mtim)) {
+#else
 	if (utimebuf.modtime == statbuf.st_mtime) {
+#endif
 		if (lstat(Filename, &xstatbuf) == 0 &&
 		    statbuf.st_ino != xstatbuf.st_ino) {
 			fprintf(stderr, "%s: crontab temp file moved, editor "

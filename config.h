@@ -90,6 +90,9 @@
 			 */
 /*#define CAPITALIZE_FOR_PS		/*-*/
 
+			/* if your OS has a futimens() function */
+/*#define HAVE_FUTIMENS			/*-*/
+
 			/* if you have a tm_gmtoff member in struct tm.
 			 * If not, we will have to compute the value ourselves.
 			 */
