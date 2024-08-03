@@ -331,7 +331,19 @@ acquire_daemonlock(int closeflag) {
 			log_it("CRON", getpid(), "DEATH", buf);
 			exit(ERROR_EXIT);
 		}
-
+		/* fd must be > STDERR since we dup fd 0-2 to /dev/null */
+		if (fd <= STDERR) {
+			int newfd = fcntl(fd, F_DUPFD, STDERR + 1);
+			if (newfd == -1) {
+				sprintf(buf, "can't dup pid fd: %s",
+					strerror(errno));
+				fprintf(stderr, "%s: %s\n", ProgramName, buf);
+				log_it("CRON", getpid(), "DEATH", buf);
+				exit(ERROR_EXIT);
+			}
+			close(fd);
+			fd = newfd;
+		}
 		if (flock(fd, LOCK_EX|LOCK_NB) < OK) {
 			int save_errno = errno;
 			long otherpid = -1;
