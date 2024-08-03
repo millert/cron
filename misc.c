@@ -773,7 +773,7 @@ long get_gmtoff(time_t *clock, struct tm *local)
 int
 open_socket(void)
 {
-	int		   sock;
+	int		   sock, error;
 	mode_t		   omask;
 	struct sockaddr_un s_un;
 
@@ -812,7 +812,9 @@ open_socket(void)
 #endif
 
 	omask = umask(007);
-	if (bind(sock, (struct sockaddr *)&s_un, sizeof(s_un))) {
+	error = bind(sock, (struct sockaddr *)&s_un, sizeof(s_un));
+	umask(omask);
+	if (error) {
 		fprintf(stderr, "%s: can't bind socket: %s\n",
 		    ProgramName, strerror(errno));
 		log_it("CRON", getpid(), "DEATH", "can't bind socket");
@@ -825,7 +827,6 @@ open_socket(void)
 		exit(ERROR_EXIT);
 	}
 	chmod(s_un.sun_path, 0660);
-	umask(omask);
 
 	return(sock);
 }
